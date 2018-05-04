@@ -5419,6 +5419,12 @@ static void intel_encoders_pre_enable(struct drm_crtc *crtc,
 
 		if (encoder->pre_enable)
 			encoder->pre_enable(encoder, crtc_state, conn_state);
+
+		/*
+		 * Enable and Configure Display Stream Compression in the source
+		 * if enabled in intel_crtc_state.
+		 */
+		intel_dsc_enable(encoder, crtc_state);
 	}
 }
 
