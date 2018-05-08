@@ -8,6 +8,7 @@
 #ifndef DRM_DSC_H_
 #define DRM_DSC_H_
 
+#include <linux/byteorder/generic.h>
 #include <drm/drm_dp_helper.h>
 
 /* VESA Display Stream Compression DSC 1.2 constants */
@@ -23,6 +24,23 @@
 #define DSC_RC_EDGE_FACTOR_CONST	    6
 #define DSC_RC_TGT_OFFSET_HI_CONST	    3
 #define DSC_RC_TGT_OFFSET_LO_CONST	    3
+
+/* DSC PPS constants and macros */
+#define DSC_PPS_VERSION_MAJOR_SHIFT		4
+#define DSC_PPS_BPC_SHIFT			4
+#define DSC_PPS_MSB_SHIFT			8
+#define DSC_PPS_LSB_MASK			(0xFF << 0)
+#define DSC_PPS_BPP_HIGH_MASK			(0x3 << 8)
+#define DSC_PPS_VBR_EN_SHIFT			2
+#define DSC_PPS_SIMPLE422_SHIFT			3
+#define DSC_PPS_CONVERT_RGB_SHIFT		4
+#define DSC_PPS_BLOCK_PRED_EN_SHIFT		5
+#define DSC_PPS_INIT_XMIT_DELAY_HIGH_MASK	(0x3 << 8)
+#define DSC_PPS_SCALE_DEC_INT_HIGH_MASK		(0xF << 8)
+#define DSC_PPS_RC_TGT_OFFSET_HI_SHIFT		4
+#define DSC_PPS_RC_RANGE_MINQP_SHIFT		11
+#define DSC_PPS_RC_RANGE_MAXQP_SHIFT		6
+#define DSC_PPS_NATIVE_420_SHIFT		1
 
 /* Configuration for a single Rate Control model range */
 struct dsc_rc_range_parameters {
@@ -462,5 +480,9 @@ struct drm_dsc_pps_infoframe {
 	struct dp_sdp_header pps_header;
 	struct picture_parameter_set pps_payload;
 } __packed;
+
+void drm_dsc_dp_pps_header_init(struct drm_dsc_pps_infoframe *pps_sdp);
+void drm_dsc_pps_infoframe_pack(struct drm_dsc_pps_infoframe *pps_sdp,
+				struct drm_dsc_config *dsc_cfg);
 
 #endif /* _DRM_DSC_H_ */
