@@ -5838,6 +5838,9 @@ static void haswell_crtc_disable(struct intel_crtc_state *old_crtc_state,
 	struct drm_i915_private *dev_priv = to_i915(crtc->dev);
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	enum transcoder cpu_transcoder = old_crtc_state->cpu_transcoder;
+	struct drm_connector_state *conn_state;
+	struct drm_connector *conn;
+	int i;
 
 	intel_encoders_disable(crtc, old_crtc_state, old_state);
 
@@ -5853,6 +5856,16 @@ static void haswell_crtc_disable(struct intel_crtc_state *old_crtc_state,
 
 	if (!transcoder_is_dsi(cpu_transcoder))
 		intel_ddi_disable_transcoder_func(old_crtc_state);
+
+	for_each_new_connector_in_state(old_state, conn, conn_state, i) {
+		struct intel_encoder *encoder =
+			to_intel_encoder(conn_state->best_encoder);
+
+		if (conn_state->crtc != crtc)
+			continue;
+
+		intel_dsc_disable(encoder, old_crtc_state);
+	}
 
 	if (INTEL_GEN(dev_priv) >= 9)
 		skylake_scaler_disable(intel_crtc);
