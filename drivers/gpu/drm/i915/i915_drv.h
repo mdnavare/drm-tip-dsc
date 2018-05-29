@@ -53,6 +53,7 @@
 #include <drm/drm_auth.h>
 #include <drm/drm_cache.h>
 #include <drm/drm_util.h>
+#include <drm/drm_dsc.h>
 
 #include "i915_params.h"
 #include "i915_reg.h"

@@ -898,6 +898,15 @@ struct intel_crtc_state {
 
 	/* output format is YCBCR 4:2:0 */
 	bool ycbcr420;
+
+	/* Display Stream compression state */
+	struct {
+		bool compression_enable;
+		bool dsc_split;
+		u16 compressed_bpp;
+		u8 slice_count;
+	} dsc_params;
+	struct drm_dsc_config dp_dsc_cfg;
 };
 
 struct intel_crtc {
