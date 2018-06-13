@@ -402,7 +402,8 @@ struct intel_link_m_n {
 	     (__i)++) \
 		for_each_if(plane)
 
-void intel_link_compute_m_n(int bpp, int nlanes,
+void intel_link_compute_m_n(int bpp, uint16_t compressed_bpp,
+			    int nlanes,
 			    int pixel_clock, int link_clock,
 			    struct intel_link_m_n *m_n,
 			    bool reduce_m_n);

@@ -47,6 +47,8 @@
 
 /* DP DSC small joiner has 2 FIFOs each of 640 x 6 bytes */
 #define DP_DSC_MAX_SMALL_JOINER_RAM_BUFFER	61440
+#define DP_DSC_MIN_SUPPORTED_BPC		8
+#define DP_DSC_MAX_SUPPORTED_BPC		10
 
 /* DP DSC throughput values used for slice count calculations KPixels/s */
 #define DP_DSC_PEAK_PIXEL_RATE			2720000
@@ -1894,6 +1896,16 @@ static int intel_dp_compute_bpp(struct intel_dp *intel_dp,
 		}
 	}
 
+	/* If DSC is supported, use the max value reported by panel */
+	if (INTEL_GEN(dev_priv) >= 10 &&
+	    drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)) {
+		bpc = min_t(u8,
+			    drm_dp_dsc_sink_max_color_depth(intel_dp->dsc_dpcd),
+			    DP_DSC_MAX_SUPPORTED_BPC);
+		if (bpc)
+			bpp = 3 * bpc;
+	}
+
 	return bpp;
 }
 
@@ -1954,14 +1966,11 @@ intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
 				link_clock = intel_dp->common_rates[clock];
 				link_avail = intel_dp_max_data_rate(link_clock,
 								    lane_count);
-
-				if (mode_rate <= link_avail) {
-					pipe_config->lane_count = lane_count;
-					pipe_config->pipe_bpp = bpp;
-					pipe_config->port_clock = link_clock;
-
+				pipe_config->lane_count = lane_count;
+				pipe_config->pipe_bpp = bpp;
+				pipe_config->port_clock = link_clock;
+				if (mode_rate <= link_avail)
 					return true;
-				}
 			}
 		}
 	}
@@ -1969,10 +1978,83 @@ intel_dp_compute_link_config_wide(struct intel_dp *intel_dp,
 	return false;
 }
 
+static bool intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
+					struct intel_crtc_state *pipe_config,
+					struct link_config_limits *limits)
+{
+	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
+	struct drm_i915_private *dev_priv = to_i915(dig_port->base.base.dev);
+	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
+	enum pipe pipe = to_intel_crtc(pipe_config->base.crtc)->pipe;
+	u16 dsc_max_output_bpp = 0;
+	u8 dsc_dp_slice_count = 0;
+
+	if (INTEL_GEN(dev_priv) < 10 ||
+	    !drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd))
+		return false;
+
+	/* DP DSC only supported on Pipe B and C */
+	if (pipe == PIPE_A && !intel_dp_is_edp(intel_dp))
+		return false;
+
+	/* DSC not supported for DSC sink BPC < 8 */
+	if (limits->max_bpp < 3 * DP_DSC_MIN_SUPPORTED_BPC) {
+		DRM_DEBUG_KMS("No DSC support for less than 8bpc\n");
+		return false;
+	}
+
+	if (intel_dp_is_edp(intel_dp)) {
+		pipe_config->dsc_params.compressed_bpp =
+			drm_edp_dsc_sink_output_bpp(intel_dp->dsc_dpcd) >> 4;
+		pipe_config->dsc_params.slice_count =
+			drm_dp_dsc_sink_max_slice_count(intel_dp->dsc_dpcd,
+							true);
+	} else {
+		dsc_max_output_bpp =
+			intel_dp_dsc_get_output_bpp(pipe_config->port_clock,
+						    pipe_config->lane_count,
+						    adjusted_mode->crtc_clock,
+						    adjusted_mode->crtc_hdisplay);
+		dsc_dp_slice_count =
+			intel_dp_dsc_get_slice_count(intel_dp,
+						     adjusted_mode->crtc_clock,
+						     adjusted_mode->crtc_hdisplay);
+		if (!(dsc_max_output_bpp && dsc_dp_slice_count)) {
+			DRM_DEBUG_KMS("Compressed BPP/Slice Count not supported\n");
+			return false;
+		}
+		pipe_config->dsc_params.compressed_bpp = dsc_max_output_bpp >> 4;
+		pipe_config->dsc_params.slice_count = dsc_dp_slice_count;
+	}
+	/*
+	 * VDSC engine operates at 1 Pixel per clock, so if peak pixel rate
+	 * is greater than the maximum Cdclock and if slice count is even
+	 * then we need to use 2 VDSC instances.
+	 */
+	pipe_config->dsc_params.dsc_split = false;
+	if (adjusted_mode->crtc_clock > dev_priv->max_cdclk_freq) {
+		if (pipe_config->dsc_params.slice_count > 1) {
+			pipe_config->dsc_params.dsc_split = true;
+		} else {
+			DRM_DEBUG_KMS("Cannot split stream to use 2 VDSC instances\n");
+			return false;
+		}
+	}
+	pipe_config->dsc_params.compression_enable = true;
+	DRM_DEBUG_KMS("DP DSC computed with Input Bpp = %d "
+		      "Compressed Bpp = %d Slice Count = %d\n",
+		      pipe_config->pipe_bpp,
+		      pipe_config->dsc_params.compressed_bpp,
+		      pipe_config->dsc_params.slice_count);
+
+	return true;
+}
+
 static bool
 intel_dp_compute_link_config(struct intel_encoder *encoder,
 			     struct intel_crtc_state *pipe_config)
 {
+	struct drm_i915_private *dev_priv = to_i915(encoder->base.dev);
 	struct drm_display_mode *adjusted_mode = &pipe_config->base.adjusted_mode;
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct link_config_limits limits;
@@ -1990,7 +2072,9 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	limits.min_lane_count = 1;
 	limits.max_lane_count = intel_dp_max_lane_count(intel_dp);
 
-	limits.min_bpp = 6 * 3;
+	limits.min_bpp = (INTEL_GEN(dev_priv) >= 10 &&
+			  drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)) ?
+		DP_DSC_MIN_SUPPORTED_BPC * 3 : 6 * 3;
 	limits.max_bpp = intel_dp_compute_bpp(intel_dp, pipe_config);
 
 	if (intel_dp_is_edp(intel_dp)) {
@@ -2017,19 +2101,42 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	 * Optimize for slow and wide. This is the place to add alternative
 	 * optimization policy.
 	 */
-	if (!intel_dp_compute_link_config_wide(intel_dp, pipe_config, &limits))
-		return false;
+	if (!intel_dp_compute_link_config_wide(intel_dp, pipe_config,
+					       &limits)) {
+		DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
+			      intel_dp_link_required(adjusted_mode->crtc_clock,
+						     pipe_config->pipe_bpp),
+			      intel_dp_max_data_rate(pipe_config->port_clock,
+						     pipe_config->lane_count));
 
-	DRM_DEBUG_KMS("DP lane count %d clock %d bpp %d\n",
-		      pipe_config->lane_count, pipe_config->port_clock,
-		      pipe_config->pipe_bpp);
+		/* enable compression if the mode doesn't fit available BW */
+		if (!intel_dp_dsc_compute_config(intel_dp, pipe_config,
+						 &limits))
+			return false;
+	}
 
-	DRM_DEBUG_KMS("DP link rate required %i available %i\n",
-		      intel_dp_link_required(adjusted_mode->crtc_clock,
-					     pipe_config->pipe_bpp),
-		      intel_dp_max_data_rate(pipe_config->port_clock,
-					     pipe_config->lane_count));
+	if (pipe_config->dsc_params.compression_enable) {
+		DRM_DEBUG_KMS("DP lane count %d clock %d Input bpp %d Compressed bpp %d\n",
+			      pipe_config->lane_count, pipe_config->port_clock,
+			      pipe_config->pipe_bpp,
+			      pipe_config->dsc_params.compressed_bpp);
 
+		DRM_DEBUG_KMS("DP link rate required %i available %i\n",
+			      intel_dp_link_required(adjusted_mode->crtc_clock,
+						     pipe_config->dsc_params.compressed_bpp),
+			      intel_dp_max_data_rate(pipe_config->port_clock,
+						     pipe_config->lane_count));
+	} else {
+		DRM_DEBUG_KMS("DP lane count %d clock %d bpp %d\n",
+			      pipe_config->lane_count, pipe_config->port_clock,
+			      pipe_config->pipe_bpp);
+
+		DRM_DEBUG_KMS("DP link rate required %i available %i\n",
+			      intel_dp_link_required(adjusted_mode->crtc_clock,
+						     pipe_config->pipe_bpp),
+			      intel_dp_max_data_rate(pipe_config->port_clock,
+						     pipe_config->lane_count));
+	}
 	return true;
 }
 
@@ -2108,7 +2215,9 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 			intel_conn_state->broadcast_rgb == INTEL_BROADCAST_RGB_LIMITED;
 	}
 
-	intel_link_compute_m_n(pipe_config->pipe_bpp, pipe_config->lane_count,
+	intel_link_compute_m_n(pipe_config->pipe_bpp,
+			       pipe_config->dsc_params.compressed_bpp,
+			       pipe_config->lane_count,
 			       adjusted_mode->crtc_clock,
 			       pipe_config->port_clock,
 			       &pipe_config->dp_m_n,
@@ -2117,7 +2226,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (intel_connector->panel.downclock_mode != NULL &&
 		dev_priv->drrs.type == SEAMLESS_DRRS_SUPPORT) {
 			pipe_config->has_drrs = true;
-			intel_link_compute_m_n(pipe_config->pipe_bpp,
+			intel_link_compute_m_n(pipe_config->pipe_bpp, 0,
 					       pipe_config->lane_count,
 					       intel_connector->panel.downclock_mode->clock,
 					       pipe_config->port_clock,

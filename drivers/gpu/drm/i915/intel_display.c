@@ -6471,7 +6471,7 @@ retry:
 
 	pipe_config->fdi_lanes = lane;
 
-	intel_link_compute_m_n(pipe_config->pipe_bpp, lane, fdi_dotclock,
+	intel_link_compute_m_n(pipe_config->pipe_bpp, 0, lane, fdi_dotclock,
 			       link_bw, &pipe_config->fdi_m_n, false);
 
 	ret = ironlake_check_fdi_lanes(dev, intel_crtc->pipe, pipe_config);
@@ -6708,17 +6708,25 @@ static void compute_m_n(unsigned int m, unsigned int n,
 }
 
 void
-intel_link_compute_m_n(int bits_per_pixel, int nlanes,
+intel_link_compute_m_n(int bits_per_pixel, uint16_t compressed_bpp,
+		       int nlanes,
 		       int pixel_clock, int link_clock,
 		       struct intel_link_m_n *m_n,
 		       bool reduce_m_n)
 {
 	m_n->tu = 64;
 
-	compute_m_n(bits_per_pixel * pixel_clock,
-		    link_clock * nlanes * 8,
-		    &m_n->gmch_m, &m_n->gmch_n,
-		    reduce_m_n);
+	/* For DSC, Data M/N calculation uses compressed BPP */
+	if (compressed_bpp)
+		compute_m_n(compressed_bpp * pixel_clock,
+			    link_clock * nlanes * 8,
+			    &m_n->gmch_m, &m_n->gmch_n,
+			    reduce_m_n);
+	else
+		compute_m_n(bits_per_pixel * pixel_clock,
+			    link_clock * nlanes * 8,
+			    &m_n->gmch_m, &m_n->gmch_n,
+			    reduce_m_n);
 
 	compute_m_n(pixel_clock, link_clock,
 		    &m_n->link_m, &m_n->link_n,
