@@ -71,6 +71,10 @@ static bool psr_global_enabled(u32 debug)
 static bool intel_psr2_enabled(struct drm_i915_private *dev_priv,
 			       const struct intel_crtc_state *crtc_state)
 {
+	/* Cannot enable DSC and PSR2 simultaneously */
+	WARN_ON(crtc_state->dsc_params.compression_enable &&
+		crtc_state->has_psr2);
+
 	switch (dev_priv->psr.debug & I915_PSR_DEBUG_MODE_MASK) {
 	case I915_PSR_DEBUG_FORCE_PSR1:
 		return false;
@@ -457,6 +461,16 @@ static bool intel_psr2_config_valid(struct intel_dp *intel_dp,
 	 */
 	if (!dev_priv->psr.sink_psr2_support)
 		return false;
+
+	/*
+	 * DSC and PSR2 cannot be enabled simultaneously. If a requested
+	 * resolution requires DSC to be enabled, priority is given to DSC
+	 * over PSR2.
+	 */
+	if (crtc_state->dsc_params.compression_enable) {
+		DRM_DEBUG_KMS("PSR2 cannot be enabled since DSC is enabled\n");
+		return false;
+	}
 
 	if (INTEL_GEN(dev_priv) >= 10 || IS_GEMINILAKE(dev_priv)) {
 		psr_max_h = 4096;
