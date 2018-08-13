@@ -2287,6 +2287,7 @@ intel_dp_compute_config(struct intel_encoder *encoder,
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		return false;
 
+	DRM_DEBUG_KMS("Force DSC en = %d\n", intel_dp->force_dsc_en);
 	if (!intel_dp_compute_link_config(encoder, pipe_config))
 		return false;
 
