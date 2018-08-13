@@ -4934,6 +4934,84 @@ static int i915_panel_show(struct seq_file *m, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(i915_panel);
 
+static int i915_dsc_support_show(struct seq_file *m, void *data)
+{
+	struct drm_connector *connector = m->private;
+	struct intel_encoder *encoder = intel_attached_encoder(connector);
+	struct intel_dp *intel_dp =
+		enc_to_intel_dp(&encoder->base);
+	struct intel_crtc *crtc;
+	struct intel_crtc_state *crtc_state;
+
+	if (connector->status != connector_status_connected)
+		return -ENODEV;
+
+	crtc = to_intel_crtc(encoder->base.crtc);
+	crtc_state = to_intel_crtc_state(crtc->base.state);
+	drm_modeset_lock(&crtc->base.mutex, NULL);
+	seq_printf(m, "Enabled: %s\n",
+		   yesno(crtc_state->dsc_params.compression_enable));
+	seq_printf(m, "Supported: %s\n",
+		   yesno(drm_dp_sink_supports_dsc(intel_dp->dsc_dpcd)));
+	drm_modeset_unlock(&crtc->base.mutex);
+
+	return 0;
+}
+
+static ssize_t i915_dsc_support_write(struct file *file,
+				      const char __user *ubuf,
+				      size_t len, loff_t *offp)
+{
+	char *input_buffer;
+	int status = 0;
+	bool val = false;
+	struct drm_connector *connector =
+		((struct seq_file *)file->private_data)->private;
+	struct intel_encoder *encoder = intel_attached_encoder(connector);
+	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
+
+	if (len == 0)
+		return 0;
+
+	input_buffer = memdup_user_nul(ubuf, len);
+	if (IS_ERR(input_buffer))
+		return PTR_ERR(input_buffer);
+
+	DRM_DEBUG_DRIVER("Copied %d bytes from user to force DSC\n",
+			 (unsigned int)len);
+
+	status = kstrtobool(input_buffer, &val);
+	DRM_DEBUG_DRIVER("Got %s for DSC Enable\n",
+			 (val) ? "true" : "false");
+	/* To prevent erroneous enabling/disabling of DSC
+	 * testing code, only accept an actual value of 1 or 0
+	 */
+	intel_dp->force_dsc_en = val;
+
+	kfree(input_buffer);
+	if (status < 0)
+		return status;
+
+	*offp += len;
+	return len;
+}
+
+static int i915_dsc_support_open(struct inode *inode,
+				 struct file *file)
+{
+	return single_open(file, i915_dsc_support_show,
+			   inode->i_private);
+}
+
+static const struct file_operations i915_dsc_support_fops = {
+	.owner = THIS_MODULE,
+	.open = i915_dsc_support_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+	.write = i915_dsc_support_write
+};
+
 /**
  * i915_debugfs_connector_add - add i915 specific connector debugfs files
  * @connector: pointer to a registered drm_connector
@@ -4952,9 +5030,12 @@ int i915_debugfs_connector_add(struct drm_connector *connector)
 		return -ENODEV;
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
-	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
+	    connector->connector_type == DRM_MODE_CONNECTOR_eDP) {
 		debugfs_create_file("i915_dpcd", S_IRUGO, root,
 				    connector, &i915_dpcd_fops);
+		debugfs_create_file("i915_dsc_support", S_IRUGO, root,
+				    connector, &i915_dsc_support_fops);
+	}
 
 	if (connector->connector_type == DRM_MODE_CONNECTOR_eDP) {
 		debugfs_create_file("i915_panel_timings", S_IRUGO, root,
