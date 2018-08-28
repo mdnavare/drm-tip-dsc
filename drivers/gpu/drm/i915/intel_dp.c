@@ -2188,12 +2188,13 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 							&limits);
 
 	/* enable compression if the mode doesn't fit available BW */
-	if (!ret) {
-		DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
-			      intel_dp_link_required(adjusted_mode->crtc_clock,
-						     pipe_config->pipe_bpp),
-			      intel_dp_max_data_rate(pipe_config->port_clock,
-						     pipe_config->lane_count));
+	if (!ret || intel_dp->force_dsc_en) {
+		if (!ret)
+			DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
+				      intel_dp_link_required(adjusted_mode->crtc_clock,
+							     pipe_config->pipe_bpp),
+				      intel_dp_max_data_rate(pipe_config->port_clock,
+							     pipe_config->lane_count));
 
 		if (!intel_dp_dsc_compute_config(intel_dp, pipe_config,
 						 &limits))
