@@ -2066,6 +2066,7 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	struct intel_dp *intel_dp = enc_to_intel_dp(&encoder->base);
 	struct link_config_limits limits;
 	int common_len;
+	bool ret;
 
 	common_len = intel_dp_common_len_rate_limit(intel_dp,
 						    intel_dp->max_link_rate);
@@ -2108,13 +2109,15 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	 * Optimize for slow and wide. This is the place to add alternative
 	 * optimization policy.
 	 */
-	if (!intel_dp_compute_link_config_wide(intel_dp, pipe_config,
-					       &limits)) {
-		DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
-			      intel_dp_link_required(adjusted_mode->crtc_clock,
-						     pipe_config->pipe_bpp),
-			      intel_dp_max_data_rate(pipe_config->port_clock,
-						     pipe_config->lane_count));
+	ret = intel_dp_compute_link_config_wide(intel_dp, pipe_config,
+						&limits);
+	if (!ret || intel_dp->force_dsc_en) {
+		if (!ret)
+			DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
+				      intel_dp_link_required(adjusted_mode->crtc_clock,
+							     pipe_config->pipe_bpp),
+				      intel_dp_max_data_rate(pipe_config->port_clock,
+							     pipe_config->lane_count));
 
 		/* enable compression if the mode doesn't fit available BW */
 		if (!intel_dp_dsc_compute_config(intel_dp, pipe_config,
