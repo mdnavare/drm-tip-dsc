@@ -489,7 +489,7 @@ int intel_dp_compute_dsc_params(struct intel_dp *intel_dp,
 			DSC_1_2_MAX_LINEBUF_DEPTH_VAL : line_buf_depth;
 	else
 		vdsc_cfg->line_buf_depth = (line_buf_depth > DSC_1_1_MAX_LINEBUF_DEPTH_BITS) ?
-			DSC_1_1_MAX_LINEBUF_DEPTH_BITS : line_buf_depth;
+			DSC_1_1_MAX_LINEBUF_DEPTH_BITS -1 : line_buf_depth;
 
 	/* Gen 11 does not support YCbCr */
 	vdsc_cfg->enable422 = false;

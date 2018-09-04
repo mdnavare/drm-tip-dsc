@@ -438,8 +438,8 @@ static int icl_max_source_rate(struct intel_dp *intel_dp)
 	struct intel_digital_port *dig_port = dp_to_dig_port(intel_dp);
 	enum port port = dig_port->base.port;
 
-	if (port == PORT_B)
-		return 540000;
+	/*if (port == PORT_B)
+	  return 540000;*/
 
 	return 810000;
 }
@@ -634,6 +634,9 @@ intel_dp_mode_valid(struct drm_connector *connector,
 
 	max_rate = intel_dp_max_data_rate(max_link_clock, max_lanes);
 	mode_rate = intel_dp_link_required(target_clock, 18);
+
+	if (!intel_dp_is_edp(intel_dp) && (mode->hdisplay > 1920 || mode->vdisplay > 1200))
+		return MODE_CLOCK_HIGH;
 
 	/*
 	 * Output bpp is stored in 6.4 format so right shift by 4 to get the
@@ -2010,15 +2013,16 @@ static bool intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
 			drm_dp_dsc_sink_max_slice_count(intel_dp->dsc_dpcd,
 							true);
 	} else {
-		dsc_max_output_bpp =
-			intel_dp_dsc_get_output_bpp(pipe_config->port_clock,
-						    pipe_config->lane_count,
-						    adjusted_mode->crtc_clock,
-						    adjusted_mode->crtc_hdisplay);
-		dsc_dp_slice_count =
-			intel_dp_dsc_get_slice_count(intel_dp,
-						     adjusted_mode->crtc_clock,
-						     adjusted_mode->crtc_hdisplay);
+		pipe_config->pipe_bpp = 24;
+		dsc_max_output_bpp = 10 << 4;/*intel_dp_dsc_get_output_bpp(pipe_config->port_clock,
+								 pipe_config->lane_count,
+								 adjusted_mode->crtc_clock,
+								 adjusted_mode->crtc_hdisplay);*/
+		dsc_dp_slice_count = intel_dp_dsc_get_slice_count(intel_dp,
+								  adjusted_mode->crtc_clock,
+								  adjusted_mode->crtc_hdisplay);
+		DRM_DEBUG_KMS("DSC Slice count = %d\n", dsc_dp_slice_count);
+		dsc_dp_slice_count = 4;
 		if (!(dsc_max_output_bpp && dsc_dp_slice_count)) {
 			DRM_DEBUG_KMS("Compressed BPP/Slice Count not supported\n");
 			return false;
@@ -2032,14 +2036,14 @@ static bool intel_dp_dsc_compute_config(struct intel_dp *intel_dp,
 	 * then we need to use 2 VDSC instances.
 	 */
 	pipe_config->dsc_params.dsc_split = false;
-	if (adjusted_mode->crtc_clock > dev_priv->max_cdclk_freq) {
+	//if (adjusted_mode->crtc_clock > dev_priv->max_cdclk_freq) {
 		if (pipe_config->dsc_params.slice_count > 1) {
 			pipe_config->dsc_params.dsc_split = true;
-		} else {
+		} /*else {
 			DRM_DEBUG_KMS("Cannot split stream to use 2 VDSC instances\n");
 			return false;
 		}
-	}
+		}*/
 	if (intel_dp_compute_dsc_params(intel_dp, pipe_config) < 0) {
 		DRM_ERROR("Cannot compute valid DSC parameters for Input Bpp = %d"
 			  "Compressed BPP = %d\n",
@@ -2111,7 +2115,7 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 	 */
 	ret = intel_dp_compute_link_config_wide(intel_dp, pipe_config,
 						&limits);
-	if (!ret || intel_dp->force_dsc_en) {
+	//if (!ret || intel_dp->force_dsc_en) {
 		if (!ret)
 			DRM_DEBUG_KMS("DP required Link rate %i does not fit available %i\n",
 				      intel_dp_link_required(adjusted_mode->crtc_clock,
@@ -2123,7 +2127,7 @@ intel_dp_compute_link_config(struct intel_encoder *encoder,
 		if (!intel_dp_dsc_compute_config(intel_dp, pipe_config,
 						 &limits))
 			return false;
-	}
+		//}
 
 	if (pipe_config->dsc_params.compression_enable) {
 		DRM_DEBUG_KMS("DP lane count %d clock %d Input bpp %d Compressed bpp %d\n",
