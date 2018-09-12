@@ -146,6 +146,8 @@ intel_display_power_domain_str(enum intel_display_power_domain domain)
 		return "MODESET";
 	case POWER_DOMAIN_GT_IRQ:
 		return "GT_IRQ";
+	case POWER_DOMAIN_VDSC_PIPE_A:
+		return "VDSC_PIPE_A";
 	default:
 		MISSING_CASE(domain);
 		return "?";
@@ -1968,9 +1970,11 @@ void intel_display_power_put(struct drm_i915_private *dev_priv,
 	/*
 	 * - transcoder WD
 	 * - KVMR (HW control)
+	 * - eDP/MIPI DSI VDSC
 	 */
 #define ICL_PW_2_POWER_DOMAINS (			\
 	ICL_PW_3_POWER_DOMAINS |			\
+	BIT_ULL(POWER_DOMAIN_VDSC_PIPE_A) |		\
 	BIT_ULL(POWER_DOMAIN_INIT))
 	/*
 	 * - eDP/DSI VDSC
